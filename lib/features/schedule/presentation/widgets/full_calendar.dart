@@ -47,27 +47,43 @@ class _FullCalendarState extends State<FullCalendar> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'Календарь',
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: () => setState(() {
-                        final now = DateTime.now();
-                        month = DateTime(now.year, now.month);
-                      }),
-                      child: const Text('Текущий месяц'),
-                    ),
-                    IconButton(
-                      tooltip: 'Закрыть календарь',
-                      onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.close_rounded),
-                    ),
-                  ],
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final compact = constraints.maxWidth < 330;
+                    void goToCurrentMonth() => setState(() {
+                      final now = DateTime.now();
+                      month = DateTime(now.year, now.month);
+                    });
+
+                    return Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Календарь',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
+                        ),
+                        if (compact)
+                          IconButton(
+                            tooltip: 'Текущий месяц',
+                            onPressed: goToCurrentMonth,
+                            icon: const Icon(Icons.today_outlined),
+                          )
+                        else
+                          TextButton(
+                            onPressed: goToCurrentMonth,
+                            child: const Text('Текущий месяц'),
+                          ),
+                        IconButton(
+                          tooltip: 'Закрыть календарь',
+                          onPressed: () => Navigator.pop(context),
+                          icon: const Icon(Icons.close_rounded),
+                        ),
+                      ],
+                    );
+                  },
                 ),
                 Row(
                   children: [

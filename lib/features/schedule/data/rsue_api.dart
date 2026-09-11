@@ -8,13 +8,15 @@ class RsueApi {
   RsueApi({Dio? dio}) : _dio = dio ?? _createDio();
 
   final Dio _dio;
+  Future<List<dynamic>>? _searchRequest;
+  final Map<String, Future<Map<String, dynamic>>> _scheduleRequests = {};
 
   static Dio _createDio() {
     final dio = Dio(
       BaseOptions(
         baseUrl: 'https://rasp-api.rsue.ru/api/v1/',
-        connectTimeout: const Duration(seconds: 12),
-        receiveTimeout: const Duration(seconds: 18),
+        connectTimeout: const Duration(seconds: 20),
+        receiveTimeout: const Duration(seconds: 30),
         headers: const {'Accept': 'application/json'},
       ),
     );
@@ -33,15 +35,15 @@ class RsueApi {
   }
 
   Future<List<Map<String, dynamic>>> searchItems() async {
-    final response = await _dio.get<List<dynamic>>('schedule/search/');
-    return (response.data ?? const [])
+    final payload = await _searchPayload();
+    return payload
         .whereType<Map>()
         .map((item) => Map<String, dynamic>.from(item))
         .toList(growable: false);
   }
 
   Future<Set<String>> groupNames() async {
-    final response = await _dio.get<List<dynamic>>('schedule/list/');
+    final payload = await _searchPayload();
     final names = <String>{};
     void visit(dynamic value, {bool groupContext = false}) {
       if (value is List) {
@@ -66,14 +68,41 @@ class RsueApi {
       }
     }
 
-    visit(response.data ?? const []);
+    visit(payload);
     return names;
   }
 
-  Future<Map<String, dynamic>> schedule(String entityName) async {
-    final response = await _dio.get<Map<String, dynamic>>(
-      'schedule/lessons/${Uri.encodeComponent(entityName)}/',
-    );
-    return response.data ?? const <String, dynamic>{};
+  Future<Map<String, dynamic>> schedule(String entityName) {
+    final active = _scheduleRequests[entityName];
+    if (active != null) return active;
+
+    late final Future<Map<String, dynamic>> request;
+    request = _dio
+        .get<Map<String, dynamic>>(
+          'schedule/lessons/${Uri.encodeComponent(entityName)}/',
+        )
+        .then((response) => response.data ?? const <String, dynamic>{})
+        .whenComplete(() {
+          if (identical(_scheduleRequests[entityName], request)) {
+            _scheduleRequests.remove(entityName);
+          }
+        });
+    _scheduleRequests[entityName] = request;
+    return request;
+  }
+
+  Future<List<dynamic>> _searchPayload() {
+    final active = _searchRequest;
+    if (active != null) return active;
+
+    late final Future<List<dynamic>> request;
+    request = _dio
+        .get<List<dynamic>>('schedule/search/')
+        .then((response) => response.data ?? const <dynamic>[])
+        .whenComplete(() {
+          if (identical(_searchRequest, request)) _searchRequest = null;
+        });
+    _searchRequest = request;
+    return request;
   }
 }

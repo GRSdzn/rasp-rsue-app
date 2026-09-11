@@ -22,6 +22,9 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   int _selectionVersion = 0;
   int _connectionVersion = 0;
   Future<void> _selectionWrite = Future.value();
+  Future<void>? _catalogueRefresh;
+  Future<void>? _scheduleRefresh;
+  int? _scheduleRefreshVersion;
   DateTime now = DateTime.now();
 
   final ScheduleRepository _repository;
@@ -139,8 +142,19 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     favoriteKeys = await _repository.favoriteKeys();
   }
 
-  Future<void> refreshCatalogue() async {
-    if (_catalogueSyncing) return;
+  Future<void> refreshCatalogue() {
+    final active = _catalogueRefresh;
+    if (active != null) return active;
+
+    late final Future<void> refresh;
+    refresh = _runCatalogueRefresh().whenComplete(() {
+      if (identical(_catalogueRefresh, refresh)) _catalogueRefresh = null;
+    });
+    _catalogueRefresh = refresh;
+    return refresh;
+  }
+
+  Future<void> _runCatalogueRefresh() async {
     _catalogueSyncing = true;
     catalogueError = null;
     notifyListeners();
@@ -178,10 +192,26 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     await refreshSchedule();
   }
 
-  Future<void> refreshSchedule() async {
+  Future<void> refreshSchedule() {
     final entity = selectedEntity;
-    if (entity == null || _scheduleSyncing) return;
+    if (entity == null) return Future.value();
     final version = _selectionVersion;
+    final active = _scheduleRefresh;
+    if (active != null && _scheduleRefreshVersion == version) return active;
+
+    late final Future<void> refresh;
+    refresh = _runScheduleRefresh(entity, version).whenComplete(() {
+      if (identical(_scheduleRefresh, refresh)) {
+        _scheduleRefresh = null;
+        _scheduleRefreshVersion = null;
+      }
+    });
+    _scheduleRefreshVersion = version;
+    _scheduleRefresh = refresh;
+    return refresh;
+  }
+
+  Future<void> _runScheduleRefresh(ScheduleEntity entity, int version) async {
     _scheduleSyncing = true;
     errorMessage = null;
     notifyListeners();

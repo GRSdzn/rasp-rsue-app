@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:drift/native.dart';
@@ -25,14 +26,16 @@ class TestApi extends RsueApi {
   bool fail = false;
   bool invalid = false;
   int calls = 0;
-  final pending = <String, Completer<Map<String, dynamic>>>{};
-  @override
-  Future<List<Map<String, dynamic>>> searchItems() async => [
+  List<Map<String, dynamic>> catalogueItems = [
     {'id': 1, 'name': 'A'},
     {'id': 2, 'name': 'B'},
   ];
+  Set<String> catalogueGroups = {'A', 'B'};
+  final pending = <String, Completer<Map<String, dynamic>>>{};
   @override
-  Future<Set<String>> groupNames() async => {'A', 'B'};
+  Future<List<Map<String, dynamic>>> searchItems() async => catalogueItems;
+  @override
+  Future<Set<String>> groupNames() async => catalogueGroups;
   @override
   Future<Map<String, dynamic>> schedule(String entityName) async {
     calls++;
@@ -49,6 +52,11 @@ Map<String, dynamic> payload(String name) => {
 };
 const a = ScheduleEntity(apiId: 1, name: 'A', kind: EntityKind.group);
 const b = ScheduleEntity(apiId: 2, name: 'B', kind: EntityKind.group);
+const teacher = ScheduleEntity(
+  apiId: 3,
+  name: 'Иванов И.И.',
+  kind: EntityKind.teacher,
+);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -107,6 +115,57 @@ void main() {
     expect(controller.selectedEntity?.key, b.key);
     expect(controller.schedule?.instance, 'B');
     expect(controller.syncing, isFalse);
+  });
+
+  test('repeated refresh shares one in-flight schedule request', () async {
+    api.pending['A'] = Completer();
+    controller.selectedEntity = a;
+
+    final first = controller.refreshSchedule();
+    final second = controller.refreshSchedule();
+
+    expect(identical(first, second), isTrue);
+    expect(api.calls, 1);
+    api.pending['A']!.complete(payload('A'));
+    await Future.wait([first, second]);
+    expect(api.calls, 1);
+    expect(controller.syncing, isFalse);
+  });
+
+  test('group and teacher selection refreshes, caches and persists', () async {
+    await controller.selectEntity(a);
+    expect(controller.selectedEntity, a);
+    expect(controller.schedule?.instance, a.name);
+    expect(await repository.cachedSchedule(a), isNotNull);
+
+    await controller.selectEntity(teacher);
+    expect(controller.selectedEntity, teacher);
+    expect(controller.schedule?.instance, teacher.name);
+    expect(await repository.cachedSchedule(teacher), isNotNull);
+    final saved =
+        jsonDecode((await repository.setting('selectedEntity'))!)
+            as Map<String, dynamic>;
+    expect(saved['id'], teacher.apiId);
+    expect(saved['name'], teacher.name);
+    expect(saved['kind'], EntityKind.teacher.name);
+  });
+
+  test('catalogue classifies groups, commissions and teachers', () async {
+    api.catalogueItems = [
+      {'id': 10, 'name': 'ПИ-301'},
+      {'id': 11, 'name': 'Комиссия №6'},
+      {'id': 12, 'name': 'доц.Иванов И.И.'},
+    ];
+    api.catalogueGroups = {};
+
+    await repository.syncCatalogue();
+    final entities = await repository.entities();
+    EntityKind kindOf(String name) =>
+        entities.singleWhere((entity) => entity.name == name).kind;
+
+    expect(kindOf('ПИ-301'), EntityKind.group);
+    expect(kindOf('Комиссия №6'), EntityKind.group);
+    expect(kindOf('доц.Иванов И.И.'), EntityKind.teacher);
   });
 
   test(

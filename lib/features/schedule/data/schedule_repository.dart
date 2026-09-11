@@ -169,10 +169,12 @@ class ScheduleRepository {
       _database.saveSetting(key, value);
 
   bool _looksLikeGroup(String name) {
-    if (!name.contains('-')) return false;
+    final normalized = name.trim().toLowerCase();
+    if (normalized.startsWith('комиссия')) return true;
+    if (!normalized.contains('-')) return false;
     return RegExp(
       r'^[\p{L}\d]{2,12}-[\p{L}\d]{2,12}$',
       unicode: true,
-    ).hasMatch(name);
+    ).hasMatch(normalized);
   }
 }

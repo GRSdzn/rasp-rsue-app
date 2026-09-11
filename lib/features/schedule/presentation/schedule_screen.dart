@@ -12,8 +12,15 @@ import 'widgets/full_calendar.dart';
 import 'widgets/week_calendar.dart';
 
 class ScheduleScreen extends ConsumerWidget {
-  const ScheduleScreen({super.key, required this.onOpenSearch});
+  const ScheduleScreen({
+    super.key,
+    required this.onOpenSearch,
+    required this.onScrollDown,
+    required this.onScrollUp,
+  });
   final VoidCallback onOpenSearch;
+  final VoidCallback onScrollDown;
+  final VoidCallback onScrollUp;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -21,7 +28,11 @@ class ScheduleScreen extends ConsumerWidget {
     final wide = MediaQuery.sizeOf(context).width >= 1000;
     final main = controller.selectedEntity == null
         ? _Welcome(controller: controller, onOpenSearch: onOpenSearch)
-        : _ScheduleContent(controller: controller);
+        : _ScheduleContent(
+            controller: controller,
+            onScrollDown: onScrollDown,
+            onScrollUp: onScrollUp,
+          );
     return Scaffold(
       body: wide
           ? Row(
@@ -45,9 +56,111 @@ class ScheduleScreen extends ConsumerWidget {
   }
 }
 
-class _ScheduleContent extends StatelessWidget {
-  const _ScheduleContent({required this.controller});
+class _ScheduleContent extends StatefulWidget {
+  const _ScheduleContent({
+    required this.controller,
+    required this.onScrollDown,
+    required this.onScrollUp,
+  });
   final AppController controller;
+  final VoidCallback onScrollDown;
+  final VoidCallback onScrollUp;
+
+  @override
+  State<_ScheduleContent> createState() => _ScheduleContentState();
+}
+
+class _ScheduleContentState extends State<_ScheduleContent>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _calendarController;
+  late final Animation<double> _calendarAnimation;
+  final _calendarKey = GlobalKey();
+
+  AppController get controller => widget.controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _calendarController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 280),
+      value: 1,
+    );
+    _calendarAnimation = CurvedAnimation(
+      parent: _calendarController,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInOutCubic,
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _calendarController.duration = MediaQuery.disableAnimationsOf(context)
+        ? Duration.zero
+        : const Duration(milliseconds: 280);
+  }
+
+  @override
+  void didUpdateWidget(covariant _ScheduleContent oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller.selectedEntity?.key !=
+        widget.controller.selectedEntity?.key) {
+      _showCalendar();
+    }
+  }
+
+  @override
+  void dispose() {
+    _calendarController.dispose();
+    super.dispose();
+  }
+
+  bool _handleScroll(ScrollNotification notification) {
+    if (notification.metrics.axis != Axis.vertical) return false;
+    if (notification.metrics.pixels <=
+        notification.metrics.minScrollExtent + 1) {
+      _showCalendar();
+      widget.onScrollUp();
+      return false;
+    }
+    if (notification case ScrollUpdateNotification(:final scrollDelta)) {
+      final delta = scrollDelta ?? 0;
+      if (delta > 3) {
+        if (_canKeepScrollingAfterCollapse(notification.metrics)) {
+          _hideCalendar();
+          widget.onScrollDown();
+        } else {
+          _showCalendar();
+          widget.onScrollUp();
+        }
+      } else if (delta < -3) {
+        _showCalendar();
+        widget.onScrollUp();
+      }
+    }
+    return false;
+  }
+
+  bool _canKeepScrollingAfterCollapse(ScrollMetrics metrics) {
+    final renderBox =
+        _calendarKey.currentContext?.findRenderObject() as RenderBox?;
+    final calendarHeight = renderBox?.size.height ?? 120;
+    final scrollRange = metrics.maxScrollExtent - metrics.minScrollExtent;
+    return scrollRange > calendarHeight + 8;
+  }
+
+  void _showCalendar() {
+    if (!_calendarController.isCompleted) {
+      _calendarController.forward();
+    }
+  }
+
+  void _hideCalendar() {
+    if (!_calendarController.isDismissed) {
+      _calendarController.reverse();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -120,45 +233,83 @@ class _ScheduleContent extends StatelessWidget {
               ],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 5, 18, 10),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: SegmentedButton<ScheduleViewMode>(
-                        segments: const [
-                          ButtonSegment(
-                            value: ScheduleViewMode.day,
-                            label: Text('День'),
-                          ),
-                          ButtonSegment(
-                            value: ScheduleViewMode.week,
-                            label: Text('Неделя'),
-                          ),
-                        ],
-                        selected: {controller.viewMode},
-                        showSelectedIcon: false,
-                        onSelectionChanged: (value) =>
-                            controller.setViewMode(value.first),
+          SizeTransition(
+            sizeFactor: _calendarAnimation,
+            alignment: Alignment.topCenter,
+            child: FadeTransition(
+              opacity: _calendarAnimation,
+              child: SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0, -.12),
+                  end: Offset.zero,
+                ).animate(_calendarAnimation),
+                child: Padding(
+                  key: _calendarKey,
+                  padding: const EdgeInsets.fromLTRB(18, 5, 18, 10),
+                  child: Column(
+                    children: [
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final compact = constraints.maxWidth < 330;
+                          return Row(
+                            children: [
+                              Expanded(
+                                child: SegmentedButton<ScheduleViewMode>(
+                                  style: const ButtonStyle(
+                                    padding: WidgetStatePropertyAll(
+                                      EdgeInsets.symmetric(horizontal: 6),
+                                    ),
+                                  ),
+                                  segments: const [
+                                    ButtonSegment(
+                                      value: ScheduleViewMode.day,
+                                      label: Text('День', maxLines: 1),
+                                    ),
+                                    ButtonSegment(
+                                      value: ScheduleViewMode.week,
+                                      label: Text('Неделя', maxLines: 1),
+                                    ),
+                                  ],
+                                  selected: {controller.viewMode},
+                                  showSelectedIcon: false,
+                                  onSelectionChanged: (value) =>
+                                      controller.setViewMode(value.first),
+                                ),
+                              ),
+                              IconButton(
+                                tooltip: 'Открыть календарь',
+                                onPressed: () =>
+                                    showFullCalendar(context, controller),
+                                icon: const Icon(Icons.calendar_month_outlined),
+                              ),
+                              if (compact)
+                                IconButton(
+                                  tooltip: 'Сегодня',
+                                  onPressed: controller.goToday,
+                                  icon: const Icon(
+                                    Icons.near_me_outlined,
+                                    size: 19,
+                                  ),
+                                )
+                              else
+                                TextButton.icon(
+                                  onPressed: controller.goToday,
+                                  icon: const Icon(
+                                    Icons.near_me_outlined,
+                                    size: 17,
+                                  ),
+                                  label: const Text('Сегодня'),
+                                ),
+                            ],
+                          );
+                        },
                       ),
-                    ),
-                    IconButton(
-                      tooltip: 'Открыть календарь',
-                      onPressed: () => showFullCalendar(context, controller),
-                      icon: const Icon(Icons.calendar_month_outlined),
-                    ),
-                    TextButton.icon(
-                      onPressed: controller.goToday,
-                      icon: const Icon(Icons.near_me_outlined, size: 17),
-                      label: const Text('Сегодня'),
-                    ),
-                  ],
+                      const SizedBox(height: 10),
+                      WeekCalendar(controller: controller),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 10),
-                WeekCalendar(controller: controller),
-              ],
+              ),
             ),
           ),
           Divider(
@@ -166,22 +317,25 @@ class _ScheduleContent extends StatelessWidget {
             color: Theme.of(context).colorScheme.outlineVariant,
           ),
           Expanded(
-            child: RefreshIndicator.adaptive(
-              color: Theme.of(context).colorScheme.primary,
-              backgroundColor: Theme.of(context).colorScheme.surface,
-              displacement: 48,
-              strokeWidth: 2.5,
-              semanticsLabel: 'Обновить расписание',
-              onRefresh: controller.refreshSchedule,
-              child: AnimatedSwitcher(
-                duration: MediaQuery.disableAnimationsOf(context)
-                    ? Duration.zero
-                    : const Duration(milliseconds: 260),
-                child: controller.schedule == null
-                    ? _LoadingSchedule(error: controller.errorMessage)
-                    : controller.viewMode == ScheduleViewMode.day
-                    ? _DayList(controller: controller)
-                    : _WeekList(controller: controller),
+            child: NotificationListener<ScrollNotification>(
+              onNotification: _handleScroll,
+              child: RefreshIndicator.adaptive(
+                color: Theme.of(context).colorScheme.primary,
+                backgroundColor: Theme.of(context).colorScheme.surface,
+                displacement: 48,
+                strokeWidth: 2.5,
+                semanticsLabel: 'Обновить расписание',
+                onRefresh: controller.refreshSchedule,
+                child: AnimatedSwitcher(
+                  duration: MediaQuery.disableAnimationsOf(context)
+                      ? Duration.zero
+                      : const Duration(milliseconds: 260),
+                  child: controller.schedule == null
+                      ? _LoadingSchedule(error: controller.errorMessage)
+                      : controller.viewMode == ScheduleViewMode.day
+                      ? _DayList(controller: controller)
+                      : _WeekList(controller: controller),
+                ),
               ),
             ),
           ),
@@ -258,7 +412,7 @@ class _DayListState extends State<_DayList> {
         physics: const AlwaysScrollableScrollPhysics(
           parent: ClampingScrollPhysics(),
         ),
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 32),
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 104),
         children: [
           _DateHeading(controller: controller),
           const SizedBox(height: 15),
@@ -334,7 +488,7 @@ class _WeekList extends StatelessWidget {
       physics: const AlwaysScrollableScrollPhysics(
         parent: ClampingScrollPhysics(),
       ),
-      padding: const EdgeInsets.fromLTRB(18, 18, 18, 32),
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 104),
       children: [
         _DateHeading(controller: controller),
         const SizedBox(height: 14),
@@ -451,7 +605,7 @@ class _EmptyDay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 56),
+    padding: const EdgeInsets.symmetric(vertical: 32),
     child: Column(
       children: [
         Container(
@@ -488,7 +642,7 @@ class _LoadingSchedule extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ListView(
     physics: const AlwaysScrollableScrollPhysics(),
-    padding: const EdgeInsets.all(18),
+    padding: const EdgeInsets.fromLTRB(18, 18, 18, 90),
     children: [
       if (error != null)
         Padding(
@@ -522,7 +676,7 @@ class _Welcome extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ListView(
-    padding: const EdgeInsets.fromLTRB(22, 34, 22, 36),
+    padding: const EdgeInsets.fromLTRB(22, 34, 22, 108),
     children: [
       ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 650),

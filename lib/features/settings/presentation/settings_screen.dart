@@ -16,7 +16,7 @@ class SettingsScreen extends ConsumerWidget {
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 720),
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 28, 20, 40),
+              padding: const EdgeInsets.fromLTRB(20, 28, 20, 112),
               children: [
                 Text(
                   'Настройки',
@@ -29,6 +29,7 @@ class SettingsScreen extends ConsumerWidget {
                     _SettingsTile(
                       icon: Icons.brightness_6_outlined,
                       title: 'Тема',
+                      stackTrailingOnNarrow: true,
                       trailing: DropdownButton<ThemeMode>(
                         value: controller.themeMode,
                         underline: const SizedBox.shrink(),
@@ -55,6 +56,7 @@ class SettingsScreen extends ConsumerWidget {
                     _SettingsTile(
                       icon: Icons.calendar_view_week_outlined,
                       title: 'Начало недели',
+                      stackTrailingOnNarrow: true,
                       trailing: DropdownButton<int>(
                         value: controller.firstDayOfWeek,
                         underline: const SizedBox.shrink(),
@@ -126,7 +128,7 @@ class SettingsScreen extends ConsumerWidget {
                   children: [
                     const _SettingsTile(
                       icon: Icons.info_outline_rounded,
-                      title: 'Расписание РГЭУ',
+                      title: 'Расписание',
                       subtitle: 'Версия 1.0.0 · данные rasp-api.rsue.ru',
                     ),
                     _SettingsTile(
@@ -203,27 +205,74 @@ class _SettingsTile extends StatelessWidget {
     required this.title,
     this.subtitle,
     this.trailing,
+    this.stackTrailingOnNarrow = false,
   });
 
   final IconData icon;
   final String title;
   final String? subtitle;
   final Widget? trailing;
+  final bool stackTrailingOnNarrow;
 
   @override
-  Widget build(BuildContext context) => ListTile(
-    leading: Container(
-      width: 36,
-      height: 36,
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.primary.withValues(alpha: .09),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Icon(icon, size: 19, color: Theme.of(context).colorScheme.primary),
-    ),
-    title: Text(title),
-    subtitle: subtitle == null ? null : Text(subtitle!),
-    trailing: trailing,
-    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final stackTrailing =
+          trailing != null &&
+          stackTrailingOnNarrow &&
+          constraints.maxWidth < 330;
+      final scheme = Theme.of(context).colorScheme;
+      final titleStyle = Theme.of(context).textTheme.bodyLarge;
+      final subtitleStyle = Theme.of(
+        context,
+      ).textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant);
+
+      Widget textContent() => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (stackTrailing)
+            Text(title, style: titleStyle)
+          else
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(child: Text(title, style: titleStyle)),
+                if (trailing != null) ...[const SizedBox(width: 8), trailing!],
+              ],
+            ),
+          if (subtitle != null) ...[
+            const SizedBox(height: 2),
+            Text(subtitle!, style: subtitleStyle),
+          ],
+          if (stackTrailing) ...[
+            const SizedBox(height: 6),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FittedBox(fit: BoxFit.scaleDown, child: trailing!),
+            ),
+          ],
+        ],
+      );
+
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: scheme.primary.withValues(alpha: .09),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, size: 19, color: scheme.primary),
+            ),
+            const SizedBox(width: 12),
+            Expanded(child: textContent()),
+          ],
+        ),
+      );
+    },
   );
 }

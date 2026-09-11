@@ -14,7 +14,7 @@ class RsueScheduleApp extends ConsumerWidget {
     final controller = ref.watch(appControllerProvider);
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Расписание РГЭУ',
+      title: 'Расписание',
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
       themeMode: controller.themeMode,
